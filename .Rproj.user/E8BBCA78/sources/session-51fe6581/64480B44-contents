@@ -1,0 +1,779 @@
+###############################################################################
+## Use theoddsapi to download todays games and odds and historical scores
+
+## More of an explanation
+# General comments
+###############################################################################
+
+
+
+
+# Download today's games and lines and prices
+# API parameters
+regions <- c('us', 'eu')  # Focusing on US to align with your example
+books <- c('pinnacle', 'draftkings')  # Example bookmakers
+sport <- "baseball_mlb"
+market_keys <- c("h2h", "spreads", "totals")  # Adding spreads and totals
+
+## Define base URL with httr2
+base_url_odds <- "https://api.the-odds-api.com/v4/sports"
+
+# Build the request
+response_odds <- httr2::request(base_url_odds) %>%
+    httr2::req_url_path_append(sport, 'odds') %>%
+    httr2::req_url_query(
+        apiKey = api_key,
+        region = regions,
+        bookmakers = books,
+        markets = paste(market_keys, collapse = ","),  # Ensure correct formatting
+        oddsFormat = 'american',
+        .multi = 'comma'
+    ) %>%
+    httr2::req_perform()
+
+# Convert response_odds from JSON
+response_odds_data <- response_odds %>%
+    httr2::resp_body_json(auto_unbox = TRUE)
+
+# Glimpse or pluck the structure
+dplyr::glimpse(response_odds_data)
+purrr::pluck(response_odds_data, 10)
+
+# Define the function to process data
+wrangle_todays_games <- function(lst) {
+    purrr::map_df(lst, ~{
+        bm <- purrr::map_df(.x$bookmakers, ~{
+            mk <- purrr::map_df(.x$markets, ~{
+                outcomes_df <- purrr::map_dfr(.x$outcomes, ~data.frame(
+                    name = .x$name, price = .x$price,
+                    point = ifelse(exists("point", .x), .x$point, NA),
+                    stringsAsFactors = FALSE
+                ), .id = "outcome_number") %>%
+                    dplyr::mutate(outcome_number = paste0("outcome_", outcome_number)) %>%
+                    tidyr::pivot_wider(names_from = outcome_number, values_from = c(name, price, point), values_fill = list(point = NA))
+                outcomes_df$market_key <- .x$key
+                outcomes_df
+            })
+            dplyr::bind_cols(data.frame(bookmaker_key = .x$key, bookmaker_title = .x$title, bookmaker_last_update = .x$last_update, stringsAsFactors = FALSE), mk)
+        })
+        dplyr::bind_cols(data.frame(id = .x$id, sport_key = .x$sport_key, sport_title = .x$sport_title, commence_time = .x$commence_time, home_team = .x$home_team, away_team = .x$away_team, stringsAsFactors = FALSE), bm)
+    })
+}
+
+# Apply the function
+sportsbook_today_df <- wrangle_todays_games(response_odds_data)
+
+# View the results
+dplyr::glimpse(sportsbook_today_df)
+
+# Assume commence_time is in UTC and convert it to local timezone
+local_tz <- Sys.timezone()
+sportsbook_today_df$commence_time <- as.POSIXct(sportsbook_today_df$commence_time, tz = "UTC", format = "%Y-%m-%dT%H:%M:%SZ")
+sportsbook_today_df$commence_time <- lubridate::with_tz(sportsbook_today_df$commence_time, tzone = local_tz)
+
+# Create game_date and game_time columns
+sportsbook_today_df <- sportsbook_today_df %>%
+    dplyr::mutate(
+        game_date = as.Date(commence_time),
+        game_time = format(commence_time, "%I:%M:%S %p")  # 12-hour format with AM/PM
+    )
+
+# Convert bookmaker_last_update to POSIXct format in UTC
+sportsbook_today_df <- sportsbook_today_df %>%
+    mutate(bookmaker_last_update_mst = as.POSIXct(bookmaker_last_update, tz = "UTC", format = "%Y-%m-%dT%H:%M:%SZ"))
+
+# Convert the UTC times to MST (Mountain Standard Time)
+sportsbook_today_df <- sportsbook_today_df %>%
+    mutate(bookmaker_last_update_mst = with_tz(bookmaker_last_update_mst, tzone = "America/Denver"))
+
+# Format the MST times to desired format
+sportsbook_today_df <- sportsbook_today_df %>%
+    mutate(bookmaker_last_update_mst = format(bookmaker_last_update_mst, "%Y-%m-%d %I:%M:%S %p"))
+
+# Write todays odds and lines to csv with date and time
+# Generate date string
+today_date <- format(Sys.Date(), "%Y-%m-%d")  # Formats today's date as 'YYYY-MM-DD'
+current_time <- format(Sys.time(), "%H-%M-%S")  # Formats current time as 'HH-MM-SS'
+
+# Generate file name
+filename <- paste0("sportsbook_today_", today_date, "_", current_time, ".csv")  # Creates 'sportsbook_today_YYYY-MM-DD_HH-MM-SS.csv'
+
+# Specify folder path
+folder_path <- "C:/Users/willa/Documents/betting/MLB/data/"  # Update the path as needed
+
+# Adjust based on your system's directory structure
+full_path <- file.path(folder_path, filename)  # Combines folder path and filename
+
+# Write csv
+data.table::fwrite(sportsbook_today_df, full_path)
+
+# Function to filter and select from a dataframe based on market_key
+create_market_df <- function(df, market_key, additional_columns = NULL) {
+    basic_columns <- c("id", "market_key", "game_date", "game_time", "home_team", "away_team",
+                       "bookmaker_title", "name_outcome_1", "name_outcome_2",
+                       "price_outcome_1", "price_outcome_2")
+
+    # Combine basic columns with any additional columns specified
+    selected_columns <- c(basic_columns, additional_columns)
+
+    df %>%
+        dplyr::filter(market_key == !!market_key) %>%
+        dplyr::select(dplyr::all_of(selected_columns))  # Use all_of to handle the cases where additional_columns may be NULL
+}
+
+# Use this function to create dataframes for each market type
+sportsbook_h2h_df <- create_market_df(sportsbook_today_df, "h2h")
+sportsbook_spreads_df <- create_market_df(sportsbook_today_df, "spreads", c("point_outcome_1", "point_outcome_2"))
+sportsbook_totals_df <- create_market_df(sportsbook_today_df, "totals", c("point_outcome_1"))
+
+# Function to add decimal odds to a given data frame based on specified columns
+convert_to_decimal_odds_df <- function(df, col_name1, col_name2) {
+    # Helper function to convert single vector of American odds to Decimal odds
+    convert_to_decimal_odds <- function(american_odds) {
+        positive_odds <- american_odds > 0
+        decimal_odds <- numeric(length(american_odds))
+
+        decimal_odds[positive_odds] <- 1 + (american_odds[positive_odds] / 100)
+        decimal_odds[!positive_odds] <- 1 + (100 / -american_odds[!positive_odds])
+
+        round(decimal_odds, 3)
+    }
+
+    # Apply conversion to specified columns and add new columns to the dataframe
+    df %>%
+        dplyr::mutate(
+            decimal_outcome_1 = convert_to_decimal_odds(get(col_name1)),
+            decimal_outcome_2 = convert_to_decimal_odds(get(col_name2))
+        )
+}
+
+# Applying the function to each data frame
+sportsbook_h2h_df <- convert_to_decimal_odds_df(sportsbook_h2h_df, "price_outcome_1", "price_outcome_2")
+sportsbook_spreads_df <- convert_to_decimal_odds_df(sportsbook_spreads_df, "price_outcome_1", "price_outcome_2")
+sportsbook_totals_df <- convert_to_decimal_odds_df(sportsbook_totals_df, "price_outcome_1", "price_outcome_2")
+
+# Generate date and time strings
+today_date <- format(Sys.Date(), "%Y-%m-%d")  # Formats today's date as 'YYYY-MM-DD'
+current_time <- format(Sys.time(), "%H-%M-%S")  # Formats current time as 'HH-MM-SS'
+
+# Specify folder path
+folder_path <- "C:/Users/willa/Documents/betting/MLB/data/"  # Update the path as needed
+
+# Generate filenames for each data frame
+filename_h2h <- paste0("sportsbook_h2h_", today_date, "_", current_time, ".csv")
+filename_spreads <- paste0("sportsbook_spreads_", today_date, "_", current_time, ".csv")
+filename_totals <- paste0("sportsbook_totals_", today_date, "_", current_time, ".csv")
+
+# Combine folder path and filenames
+full_path_h2h <- file.path(folder_path, filename_h2h)
+full_path_spreads <- file.path(folder_path, filename_spreads)
+full_path_totals <- file.path(folder_path, filename_totals)
+
+# Write each data frame to a separate CSV file
+data.table::fwrite(sportsbook_h2h_df, full_path_h2h)
+data.table::fwrite(sportsbook_spreads_df, full_path_spreads)
+data.table::fwrite(sportsbook_totals_df, full_path_totals)
+
+
+###############################################################################
+
+# Fetch and process historical odds data for a given date using httr2
+fetch_daily_historical_odds <- function(date, api_key, bookmakers, regions) {
+    formatted_date <- format(date, "%Y-%m-%dT12:00:00Z")
+    base_url <- "https://api.the-odds-api.com/v4/historical/sports/baseball_mlb/odds/"
+    bookmakers_str <- paste(bookmakers, collapse = ",")
+    regions_str <- paste(regions, collapse = ",")
+
+    response <- httr2::request(base_url) %>%
+        httr2::req_url_query(
+            apiKey = api_key,
+            regions = regions_str,
+            markets = paste(market_keys, collapse = ","),
+            oddsFormat = "american",
+            bookmakers = bookmakers_str,
+            date = formatted_date
+        ) %>%
+        httr2::req_perform()
+
+    data <- httr2::resp_body_json(response)
+
+    if (!is.null(data) && !is.null(data$data)) {
+        flatten_single_game(data$data)
+    } else {
+        message("No data available for ", formatted_date)
+        return(tibble::tibble())  # Return an empty tibble if there's no data
+    }
+}
+
+
+# Function to convert nested JSON data to a dataframe
+flatten_single_game <- function(lst) {
+    purrr::map_df(lst, ~{
+        bookmakers_df <- purrr::map_df(.x$bookmakers, ~{
+            markets_df <- purrr::map_df(.x$markets, ~{
+                outcomes_df <- purrr::map_df(.x$outcomes, ~data.frame(
+                    outcome_name = .x$name,
+                    outcome_price = .x$price,
+                    outcome_point = ifelse(!is.null(.x$point), .x$point, NA),
+                    stringsAsFactors = FALSE
+                ))
+                dplyr::bind_cols(data.frame(market_key = .x$key, market_last_update = .x$last_update, stringsAsFactors = FALSE), outcomes_df)
+            })
+            dplyr::bind_cols(data.frame(bookmaker_key = .x$key, bookmaker_title = .x$title, stringsAsFactors = FALSE), markets_df)
+        })
+        dplyr::bind_cols(data.frame(
+            game_id = .x$id, game_sport_key = .x$sport_key, game_sport_title = .x$sport_title,
+            game_commence_time = .x$commence_time, game_home_team = .x$home_team, game_away_team = .x$away_team,
+            stringsAsFactors = FALSE), bookmakers_df)
+    })
+}
+
+# Generate the sequence of dates from the start of the season to yesterday
+start_season <- as.Date("2024-03-20") # Update if I want different date range
+date_seq <- seq(start_season, Sys.Date() - 1, by = "day")
+
+
+# Iterate over each date, fetch and process data
+all_data <- purrr::map(date_seq, ~fetch_daily_historical_odds(.x, api_key, books, regions))
+
+# Convert it into a data.table
+historical_odds_dt <- data.table::rbindlist(all_data, use.names = TRUE, fill = TRUE)
+
+# Convert bookmaker_last_update to POSIXct format in UTC
+historical_odds_dt <- historical_odds_dt %>%
+    dplyr::mutate(market_last_update_mst = as.POSIXct(market_last_update, tz = "UTC", format = "%Y-%m-%dT%H:%M:%SZ"))
+
+# Convert the UTC times to MST (Mountain Standard Time)
+historical_odds_dt <- historical_odds_dt %>%
+    dplyr::mutate(market_last_update_mst = lubridate::with_tz(market_last_update_mst, tzone = "America/Denver"))
+
+# Format the MST times to desired format
+historical_odds_dt <- historical_odds_dt %>%
+    dplyr::mutate(market_last_update_mst = format(market_last_update_mst, "%Y-%m-%d %I:%M:%S %p"))
+
+# Add game_date and game_time columns
+historical_odds_dt <- historical_odds_dt %>%
+    mutate(gameDate = as.POSIXct(game_commence_time, tz = "UTC", format = "%Y-%m-%dT%H:%M:%SZ"),
+           gameDate = with_tz(gameDate, tzone = local_tz),
+           game_date = as.Date(gameDate),
+           game_time = format(gameDate, "%I:%M:%S %p"))
+
+# Split data into H2H, spreads, and totals
+historical_h2h_data <- historical_odds_dt %>% dplyr::filter(market_key == "h2h")
+historical_spreads_data <- historical_odds_dt %>% dplyr::filter(market_key == "spreads")
+historical_totals_data <- historical_odds_dt %>% dplyr::filter(market_key == "totals")
+
+# Generate date and time strings
+today_date <- format(Sys.Date(), "%Y-%m-%d")  # Formats today's date as 'YYYY-MM-DD'
+current_time <- format(Sys.time(), "%H-%M-%S")  # Formats current time as 'HH-MM-SS'
+
+# Specify folder path
+folder_path <- "C:/Users/willa/Documents/betting/MLB/data/"  # Update the path as needed
+
+# Generate filenames for each data frame
+filename_h2h <- paste0("historical_h2h_", today_date, "_", current_time, ".csv")
+filename_spreads <- paste0("historical_spreads_", today_date, "_", current_time, ".csv")
+filename_totals <- paste0("historical_totals_", today_date, "_", current_time, ".csv")
+
+# Combine folder path and filenames
+full_path_h2h <- file.path(folder_path, filename_h2h)
+full_path_spreads <- file.path(folder_path, filename_spreads)
+full_path_totals <- file.path(folder_path, filename_totals)
+
+# Write each data frame to a separate CSV file
+data.table::fwrite(historical_h2h_data, full_path_h2h)
+data.table::fwrite(historical_spreads_data, full_path_spreads)
+data.table::fwrite(historical_totals_data, full_path_totals)
+
+
+###############################################################################
+# Get past game scores
+# Define the start and end dates for the loop
+start_date <- as.Date("2024-03-01")
+end_date <- Sys.Date() - 1
+
+# Initialize a list to store the data frames
+all_games <- list()
+
+# Loop over each date in the range
+for (current_date in seq.Date(start_date, end_date, by = "day")) {
+    # Ensure current_date is a Date object and format it
+    formatted_date <- format(as.Date(current_date), "%Y-%m-%d")
+
+    # Try to get data from the MLB API
+    try({
+        # Check for potential variable or function name conflict with mlb_game_pks
+        # Ensure mlb_game_pks is the function you are calling
+        mlb_game_data <- mlb_game_pks(formatted_date)
+
+        # Add the full data to the list without filtering
+        all_games[[formatted_date]] <- mlb_game_data
+
+        # Optional: Print a message to show progress
+        cat("Data fetched for:", formatted_date, "\n")
+    }, silent = TRUE)
+}
+
+# Combine all data frames into one
+game_scores_df <- bind_rows(all_games)
+
+# Display the combined data frame (optional, might be large)
+print(game_scores_df)
+
+# Assuming 'game_scores_df' is your initial data frame
+local_tz <- Sys.timezone()
+
+# Function to process game scores data
+process_game_scores <- function(game_scores_df, local_tz) {
+    game_scores_df %>%
+        # Convert gameDate for timezone
+        mutate(gameDate = as.POSIXct(gameDate, tz = "UTC", format = "%Y-%m-%dT%H:%M:%SZ"),
+               gameDate = with_tz(gameDate, tzone = local_tz),
+               game_date = as.Date(gameDate),
+               game_time = format(gameDate, "%I:%M:%S %p")) %>%
+        # Select necessary columns and calculate game metrics
+        select(game_pk, gameDate, game_date, game_time,
+               teams.home.score, teams.away.score,
+               teams.home.team.id, teams.away.team.id,
+               teams.home.team.name, teams.away.team.name,
+               teams.home.leagueRecord.wins, teams.home.leagueRecord.losses, teams.home.leagueRecord.pct,
+               teams.away.leagueRecord.wins, teams.away.leagueRecord.losses, teams.away.leagueRecord.pct) %>%
+        mutate(
+            # Home team MOV (Margin of Victory)
+            home_team_MOV = teams.home.score - teams.away.score,
+            # Game total
+            game_total = teams.home.score + teams.away.score,
+            # Game result (1 if home team won, 0 otherwise)
+            game_result = ifelse(home_team_MOV > 0, 1, 0),
+            # Ensure numeric conversion for percentage comparison
+            teams.home.leagueRecord.pct = as.numeric(teams.home.leagueRecord.pct),
+            teams.away.leagueRecord.pct = as.numeric(teams.away.leagueRecord.pct),
+            # If winning team has win pct > 0.5
+            winning_team_high_pct = ifelse(game_result == 1 & teams.home.leagueRecord.pct > 0.5, 1, 0)
+        )
+}
+
+# Define the local timezone
+local_tz <- "America/Denver"
+
+# Process the game scores data
+final_game_scores_df <- process_game_scores(game_scores_df, local_tz)
+
+# Display the updated dataframe
+dplyr::glimpse(final_game_scores_df)
+
+# Define the file path
+folder_path <- "C:/Users/willa/Documents/betting/MLB/data/"  # Update the path as needed
+filename <- paste0("final_game_scores_", today_date, ".csv")  # Create filename with today's date
+full_path <- file.path(folder_path, filename)  # Combine folder path and filename
+
+# Write the dataframe to a CSV file
+write.csv(final_game_scores_df, full_path, row.names = FALSE)
+
+# Print a message to confirm
+cat("CSV file has been saved at", full_path, "\n")
+
+#-------------------------------------------------------------------------------
+# Great some game score MOV graphs
+
+# Ensure finite values by filtering out NA or non-finite numbers
+final_game_scores_df <- final_game_scores_df %>%
+    dplyr::filter(!is.na(home_team_MOV) & is.finite(home_team_MOV))
+
+# Game score home team MOV and normal distribution plot
+# Check if there are any values left to plot
+if (nrow(final_game_scores_df) > 0) {
+    # Find the range for the x-axis breaks
+    x_min <- floor(min(final_game_scores_df$home_team_MOV))
+    x_max <- ceiling(max(final_game_scores_df$home_team_MOV))
+
+    # Calculate mean and standard deviation
+    mean_mov <- mean(final_game_scores_df$home_team_MOV)
+    sd_mov <- sd(final_game_scores_df$home_team_MOV)
+
+    # Create a histogram with a normal distribution curve and integer x-axis ticks
+    ggplot(final_game_scores_df, aes(x = home_team_MOV)) +
+        geom_histogram(aes(y = ..density..), binwidth = 1, fill = "blue", color = "black") +
+        stat_function(fun = dnorm, args = list(mean = mean_mov, sd = sd_mov), color = "red", linewidth = 1) +
+        scale_x_continuous(breaks = seq(x_min, x_max, by = 1)) +
+        theme_minimal() +
+        theme(
+            plot.title = element_text(hjust = 0.5, face = "bold"),
+            axis.title = element_text(face = "bold"),
+            axis.text = element_text(face = "bold")
+        ) +
+        labs(title = "Distribution of Home Team MOV with Normal Curve",
+             x = "Home Team Margin of Victory (MOV)",
+             y = "Density")
+} else {
+    cat("No data to plot.\n")
+}
+
+# KDE kernel density estimation
+# Check if there are any values left to plot
+if (nrow(final_game_scores_df) > 0) {
+    # Calculate mean and standard deviation
+    mean_mov <- mean(final_game_scores_df$home_team_MOV)
+    sd_mov <- sd(final_game_scores_df$home_team_MOV)
+
+    # Create a KDE plot with a normal distribution curve
+    ggplot(final_game_scores_df, aes(x = home_team_MOV)) +
+        geom_density(fill = "blue", alpha = 0.5) +
+        stat_function(fun = dnorm, args = list(mean = mean_mov, sd = sd_mov), color = "red", linewidth = 1) +
+        theme_minimal() +
+        theme(
+            plot.title = element_text(hjust = 0.5, face = "bold"),
+            axis.title = element_text(face = "bold"),
+            axis.text = element_text(face = "bold")
+        ) +
+        labs(title = "Kernel Density Estimation of Home Team MOV with Normal Curve",
+             x = "Home Team Margin of Victory (MOV)",
+             y = "Density")
+} else {
+    cat("No data to plot.\n")
+}
+
+# Regresion plot of teams.home.leagueRecord.pct versus home_team_MOV
+# Check if there are any values left to plot
+if (nrow(final_game_scores_df) > 0) {
+    # Create a regression plot
+    ggplot(final_game_scores_df, aes(x = teams.home.leagueRecord.pct, y = home_team_MOV)) +
+        geom_point(color = "blue", alpha = 0.5) +
+        geom_smooth(method = "lm", color = "red", se = TRUE) +
+        theme_minimal() +
+        theme(
+            plot.title = element_text(hjust = 0.5, face = "bold"),
+            axis.title = element_text(face = "bold"),
+            axis.text = element_text(face = "bold")
+        ) +
+        labs(title = "Regression Plot of Home Team Win Percentage vs. MOV",
+             x = "Home Team League Record Percentage",
+             y = "Home Team Margin of Victory (MOV)")
+} else {
+    cat("No data to plot.\n")
+}
+
+# Check if there are any values left to plot
+if (nrow(final_game_scores_df) > 0) {
+    # Bivariate KDE plot
+    ggplot(final_game_scores_df, aes(x = teams.home.leagueRecord.pct, y = home_team_MOV)) +
+        geom_point(color = "blue", alpha = 0.5) +
+        geom_density_2d(color = "red") +
+        theme_minimal() +
+        theme(
+            plot.title = element_text(hjust = 0.5, face = "bold"),
+            axis.title = element_text(face = "bold"),
+            axis.text = element_text(face = "bold")
+        ) +
+        labs(title = "Bivariate Kernel Density Estimation Plot",
+             x = "Home Team League Record Percentage",
+             y = "Home Team Margin of Victory (MOV)")
+} else {
+    cat("No data to plot.\n")
+}
+
+
+# Check if there are any values left to plot
+if (nrow(final_game_scores_df) > 0) {
+    # Fit a linear model
+    lm_model <- lm(home_team_MOV ~ teams.home.leagueRecord.pct, data = final_game_scores_df)
+
+
+    # Residual plot
+    ggplot(final_game_scores_df, aes(x = teams.home.leagueRecord.pct, y = residuals)) +
+        geom_point(color = "blue", alpha = 0.5) +
+        geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+        theme_minimal() +
+        theme(
+            plot.title = element_text(hjust = 0.5, face = "bold"),
+            axis.title = element_text(face = "bold"),
+            axis.text = element_text(face = "bold")
+        ) +
+        labs(title = "Residual Plot",
+             x = "Home Team League Record Percentage",
+             y = "Residuals")
+} else {
+    cat("No data to plot.\n")
+}
+
+
+
+# Check if there are any values left to plot
+if (nrow(final_game_scores_df) > 0) {
+    # Select relevant columns for pairplot
+    pairplot_data <- final_game_scores_df %>%
+        dplyr::select(home_team_MOV, teams.home.leagueRecord.pct, teams.away.leagueRecord.pct)
+
+    # Create pairplot
+    ggpairs(pairplot_data) +
+        theme_minimal() +
+        theme(
+            plot.title = element_text(hjust = 0.5, face = "bold"),
+            axis.title = element_text(face = "bold"),
+            axis.text = element_text(face = "bold")
+        ) +
+        labs(title = "Pairplot of Selected Variables")
+} else {
+    cat("No data to plot.\n")
+}
+
+###############################################################################
+# Download MLB team data from baseballR functions, to use help run the command -> help("baseballR")
+
+# Download team dataframe
+mlb_teams <- try(mlb_teams(season = 2024, sport_ids = c(1)))
+
+# Download team stats
+mlb_team_stats <- try(mlb_teams_stats(stat_type = 'season', stat_group = 'hitting', season = 2024, sport_ids = c(1)))
+
+
+###############################################################################
+
+# Function to convert American odds to Decimal odds and mutate the dataframe
+convert_and_mutate_to_decimal_odds <- function(df) {
+    convert_to_decimal_odds <- function(american_odds) {
+        positive_odds <- american_odds > 0
+        decimal_odds <- numeric(length(american_odds))
+        decimal_odds[positive_odds] <- 1 + (american_odds[positive_odds] / 100)
+        decimal_odds[!positive_odds] <- 1 + (100 / -american_odds[!positive_odds])
+        round(decimal_odds, 3)
+    }
+
+    df %>%
+        dplyr::mutate(
+            decimal_outcome_1 = convert_to_decimal_odds(price_outcome_1),
+            decimal_outcome_2 = convert_to_decimal_odds(price_outcome_2)
+        )
+}
+
+
+# Convert prices to decimal odds and update sportsbook_today_df
+sportsbook_today_df <- convert_and_mutate_to_decimal_odds(sportsbook_today_df)
+
+# Calculate total vig
+sportsbook_today_df <- sportsbook_today_df %>%
+    dplyr::mutate(vig = (1 / decimal_outcome_1 + 1 / decimal_outcome_2) - 1)
+
+# Calculate average Sportsbook vig at Pinnacle for each market key
+average_vig <- sportsbook_today_df %>%
+    dplyr::group_by(market_key) %>%
+    dplyr::summarise(avg_vig = mean(vig))
+
+# Store average vigs as individual values
+purrr::walk2(average_vig$market_key, average_vig$avg_vig, ~assign(paste0("avg_vig_", stringr::str_replace_all(.x, "[[:punct:]]|\\s+", "_")), .y, envir = globalenv()))
+
+###############################################################################
+
+# Create final df to combine game scores and odds
+# Create unique key columns
+final_game_scores_df <- final_game_scores_df %>%
+    mutate(unique_key = paste(game_date, game_time, teams.home.team.name, teams.away.team.name, sep = "_"))
+
+historical_odds_dt <- historical_odds_dt %>%
+    mutate(unique_key = paste(game_date, game_time, game_home_team, game_away_team, sep = "_"))
+
+# Merge datasets
+final_combined_df <- final_game_scores_df %>%
+    left_join(historical_odds_dt, by = "unique_key")
+
+# Define the function to clean column names by removing '.x' and '.y' suffixes
+clean_column_names <- function(df) {
+    names(df) <- gsub("\\.x$|\\.y$", "", names(df))
+    return(df)
+}
+
+# Clean column names to remove any '.x' or '.y' suffixes added during the merge
+final_combined_df <- clean_column_names(final_combined_df)
+
+# Identify and remove duplicate columns
+final_combined_df <- final_combined_df[, !duplicated(colnames(final_combined_df))]
+
+# Remove rows with NA values in all columns except 'OutcomePoint'
+final_combined_df <- final_combined_df %>%
+    tidyr::drop_na(-outcome_point)
+
+
+# Function to convert American odds to Decimal odds and mutate the dataframe
+convert_and_mutate_to_decimal_odds <- function(df) {
+    convert_to_decimal_odds <- function(american_odds) {
+        positive_odds <- american_odds > 0
+        decimal_odds <- numeric(length(american_odds))
+        decimal_odds[positive_odds] <- 1 + (american_odds[positive_odds] / 100)
+        decimal_odds[!positive_odds] <- 1 + (100 / -american_odds[!positive_odds])
+        round(decimal_odds, 3)
+    }
+
+    df %>%
+        dplyr::mutate(
+            decimal_outcome_1 = convert_to_decimal_odds(outcome_price)
+        )
+}
+
+# Convert prices to decimal odds and update sportsbook_today_df
+final_combined_df <- convert_and_mutate_to_decimal_odds(final_combined_df)
+
+# Print the result
+dplyr::glimpse(final_combined_df)
+
+# Define the file path
+folder_path <- "C:/Users/willa/Documents/betting/MLB/data/"  # Update the path as needed
+filename <- paste0("final_game_scores_&odds", today_date, ".csv")  # Create filename with today's date
+full_path <- file.path(folder_path, filename)  # Combine folder path and filename
+
+# Write the dataframe to a CSV file
+write.csv(final_combined_df, full_path, row.names = FALSE)
+
+# Print a message to confirm
+cat("CSV file has been saved at", full_path, "\n")
+
+
+
+#### Dont need yet
+# Filter the data for h2h, spreads, totals
+final_combined_filtered_df <- final_combined_df %>%
+    dplyr::filter(market_key == "h2h") %>%  # Keep only 'h2h' market entries
+    dplyr::group_by(game_pk) %>%  # Group by game_pk
+    dplyr::mutate(keep_row = dplyr::row_number(dplyr::desc(row_number())) <= 2) %>%  # Keep last 2 rows in each group
+    dplyr::filter(keep_row) %>%  # Filter rows based on keep_row
+    dplyr::select(-keep_row) %>%  # Remove the temporary keep_row column
+    dplyr::ungroup()  # Ungroup the data
+
+# Filter the data for h2h, spreads, totals
+final_combined_filtered_df <- final_combined_df %>%
+    dplyr::filter(market_key == "totals") %>%  # Keep only 'h2h' market entries
+    dplyr::group_by(game_pk) %>%  # Group by game_pk
+    dplyr::mutate(keep_row = dplyr::row_number(dplyr::desc(row_number())) <= 2) %>%  # Keep last 2 rows in each group
+    dplyr::filter(keep_row) %>%  # Filter rows based on keep_row
+    dplyr::select(-keep_row) %>%  # Remove the temporary keep_row column
+    dplyr::ungroup()  # Ungroup the data
+
+# Filter the data for h2h, spreads, totals
+final_combined_filtered_df <- final_combined_df %>%
+    dplyr::filter(market_key == "spreads") %>%  # Keep only 'h2h' market entries
+    dplyr::group_by(game_pk) %>%  # Group by game_pk
+    dplyr::mutate(keep_row = dplyr::row_number(dplyr::desc(row_number())) <= 2) %>%  # Keep last 2 rows in each group
+    dplyr::filter(keep_row) %>%  # Filter rows based on keep_row
+    dplyr::select(-keep_row) %>%  # Remove the temporary keep_row column
+    dplyr::ungroup()  # Ungroup the data
+####
+
+# Print the result
+dplyr::glimpse(final_combined_filtered_df)
+
+
+# Combine into single row
+# Create team_type based on outcome_name and game home/away team names
+final_combined_filtered_df <- final_combined_filtered_df %>%
+    mutate(
+        team_type = case_when(
+            outcome_name == game_home_team ~ "home",
+            outcome_name == game_away_team ~ "away",
+            TRUE ~ NA_character_
+        )
+    )
+
+# Check the result to ensure team_type is correctly identified
+dplyr::glimpse(final_combined_filtered_df)
+
+
+# Pivot wider to combine rows into a single row for each game_pk for h2h
+final_combined_df_wide <- final_combined_filtered_df %>%
+    tidyr::pivot_wider(
+        id_cols = c(game_pk, game_commence_time, teams.home.score, teams.away.score,),
+        names_from = team_type,
+        values_from = c(outcome_name, decimal_outcome_1),
+        names_sep = "_"
+    )
+
+#### Dont need yet
+# Pivot wider to combine rows into a single row for each game_pk for totals
+final_combined_df_wide <- final_combined_filtered_df %>%
+    pivot_wider(
+        id_cols = c(game_pk, game_commence_time, teams.home.score, teams.away.score, teams.home.team.name, teams.away.team.name),
+        names_from = outcome_name,
+        values_from = c(outcome_price, outcome_point, decimal_outcome_1),
+        names_sep = "_"
+    )
+######
+
+
+# Select and reorder columns as needed
+final_df <- final_combined_df_wide %>%
+    dplyr::select(
+        game_pk, game_commence_time, outcome_name_away, teams.away.score, outcome_name_home, teams.home.score, decimal_outcome_1_home, decimal_outcome_1_away
+    )
+
+# Write the dataframe to a CSV file
+filename <- paste0("final_game_scores_&odds_h2h", today_date, ".csv")  # Create filename with today's date
+full_path <- file.path(folder_path, filename)  # Combine folder path and filename
+write.csv(final_df, full_path, row.names = FALSE)
+
+# Print a message to confirm
+cat("CSV file has been saved at", full_path, "\n")
+
+
+
+
+# Create data frames for home and away games
+home_games <- final_combined_df_wide %>%
+    select(game_pk, game_commence_time, outcome_name_home, teams.home.score, teams.away.score) %>%
+    rename(
+        Team = outcome_name_home,
+        PFH = teams.home.score,
+        PAH = teams.away.score,
+        CommenceTime = game_commence_time
+    ) %>%
+    mutate(PFA = 0, PAA = 0)
+
+away_games <- final_combined_df_wide %>%
+    select(game_pk, game_commence_time, outcome_name_away, teams.away.score, teams.home.score) %>%
+    rename(
+        Team = outcome_name_away,
+        PFA = teams.away.score,
+        PAA = teams.home.score,
+        CommenceTime = game_commence_time
+    ) %>%
+    mutate(PFH = 0, PAH = 0)
+
+# Combine home and away data frames
+combined_games <- bind_rows(home_games, away_games)
+
+# Calculate the average points for and against at home and away for each team
+team_summary_stats <- combined_games %>%
+    group_by(Team) %>%
+    summarise(
+        Avg_PFH = round(mean(PFH, na.rm = TRUE), 3),
+        Avg_PAH = round(mean(PAH, na.rm = TRUE), 3),
+        Avg_PFA = round(mean(PFA, na.rm = TRUE), 3),
+        Avg_PAA = round(mean(PAA, na.rm = TRUE), 3)
+    )
+
+# View the summary statistics
+print(team_summary_stats)
+
+
+
+
+
+# For totals
+
+# Convert game_commence_time to Date-Time format
+final_combined_df_wide$game_commence_time <- as.POSIXct(final_combined_df_wide$game_commence_time, format="%Y-%m-%d %H:%M:%S")
+
+# Define the filter date
+filter_date <- as.POSIXct("2024-05-06 23:59:59", format="%Y-%m-%d %H:%M:%S")
+
+# Filter the dataframe
+final_combined_df_wide <- final_combined_df_wide %>% filter(game_commence_time <= filter_date)
+
+# Write the dataframe to a CSV file
+filename <- paste0("final_game_scores_&odds_totals", today_date, ".csv")  # Create filename with today's date
+full_path <- file.path(folder_path, filename)  # Combine folder path and filename
+write.csv(final_combined_df_wide, full_path, row.names = FALSE)
+
+# Print a message to confirm
+cat("CSV file has been saved at", full_path, "\n")
+
+
+# Display the filtered dataframe
+print(combined_games)

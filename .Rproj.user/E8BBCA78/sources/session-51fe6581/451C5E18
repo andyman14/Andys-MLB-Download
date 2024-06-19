@@ -1,0 +1,26 @@
+{
+    "id": "451C5E18",
+    "path": "~/betting/MLB/MLB git/00_Download_MLB_Master.R",
+    "project_path": "00_Download_MLB_Master.R",
+    "type": "r_source",
+    "hash": "328487508",
+    "contents": "",
+    "dirty": false,
+    "created": 1718751246249.0,
+    "source_on_save": false,
+    "relative_order": 1,
+    "properties": {
+        "source_window_id": "",
+        "Source": "Source",
+        "cursorPosition": "0,0",
+        "scrollLine": "0"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1718751804,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1718751804055,
+    "read_only": false,
+    "read_only_alternatives": []
+}
