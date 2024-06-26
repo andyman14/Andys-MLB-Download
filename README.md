@@ -21,12 +21,12 @@ The script writes the dataframes to CSV files. If you want to run this yourself,
 ### How to Execute ###
 Select all lines of code in 00_Download_MLB_Master.R and execute them after updating the "What to update" section.
 
-### Sections ###
+### Code Logic ###
 
-    Today's MLB lines and prices for H2H, spreads, and totals
-    Historical lines and prices for H2H, spreads, and totals
-    Historical game scores
-    Combines #2 and #3 into a final dataframe
+1. Today's MLB lines and prices for H2H, spreads, and totals
+2. Historical lines and prices for H2H, spreads, and totals
+3. Historical game scores
+4. Combines #2 and #3 into final dataframes.
 
 ### Dataframes of Relevance ###
     sportsbook_%
