@@ -18,7 +18,8 @@ date: "6/21/2024"
 - The script downloads historical prices that reflect the closing line, can be modified to download for certain time intervals before game time. 
 - The historical game scores returns game rows with home and away team scores, winning percentages and other game identifiers.
 - The sportsbook vigorish % is calculated for Pinnacle on h2h, spreads and totals is saved into variables avg_vig_%
-- The final dataframe final_combined_df_wide should have 3 rows for each game, one for h2h spreads and totals with the respective line information. 
+- The final dataframe final_combined_df_wide should have 3 rows for each game, one for h2h spreads and totals with the respective line information.
+- The script writes the dataframes to csv files, if you want to run this yourself you have to update these folder paths. See below. 
 
 
 ### **How to execute**
@@ -35,22 +36,7 @@ Run the lines of code to install the packages and than execute the script found 
 - historical_%
 - final_%
 
-### **Information**
-- This is an R script that can be used to download historical MLB game scores, closing lines and prices.
-- The main data sources are the baseballR package and the-odds-API. 
-- The script can be run with a free API key obtained through the-odds-API website. If you plan to use the script more frequently , you will have to get a paid API license. 
-- The script is setup to run from the start of the 2024 MLB season until yesterday for all downloads. 
-- The script downloads todays betting lines and prices for h2h aka moneyline, spreads and totals
-- The script is using the default sportsbooks of DraftKings and Pinnacle
-- The prices are downloaded as American and converted to Decimal for convenience and further calculations
-- The script downloads historical prices that reflect the closing line, can be modified to download for certain time intervals before game time. 
-- The historical game scores returns game rows with home and away team scores, winning percentages and other game identifiers.
-- The vigorish % is calculated for Pinnacle on h2h, spreads and totals is saved into variables  avg_vig_%
-- The final dataframe final_combined_df_wide should have 3 rows for each game, one for h2h spreads and totals with the respective line information. 
-
 -------------------------------------------------------------------------------
-## Calculating the Total Vig
-
 ### Average Vig Values at Pinnacle in %
 
 - **H2H:** 0.04159131
