@@ -7,8 +7,7 @@ date: "6/21/2024"
 
 ## *READ ME*
 
-Information
-
+### Information ###
 This R script is designed to download historical MLB game scores and sportsbook closing lines and prices. The main data sources are the baseballR package and the Odds API. The script can be run with a free API key obtained from the Odds API website. If you plan to use the script more frequently, you will need to obtain a paid API license.
 
 The script is configured to start executing from the beginning of the 2024 MLB season until the current date for all downloads. It downloads today's betting lines and prices for head-to-head (H2H), spreads, and totals. By default, it uses DraftKings and Pinnacle sportsbooks. Prices are downloaded in American format and converted to Decimal for convenience and further calculations.
@@ -18,24 +17,23 @@ The script also downloads historical prices that reflect the closing line and ca
 The sportsbook vigorish (vig) percentage is calculated for Pinnacle on H2H, spreads, and totals, and is saved into variables avg_vig_%. The final dataframe, final_combined_df_wide, should have three rows for each game: one for H2H, spreads, and totals, each with the respective line information.
 
 The script writes the dataframes to CSV files. If you want to run this yourself, you will need to update the folder paths. See the instructions below. Basic team summary statistics are calculated at the end.
-How to Execute
 
+### How to Execute ###
 Select all lines of code in 00_Download_MLB_Master.R and execute them after updating the "What to update" section.
-Sections
+
+### Sections ###
 
     Today's MLB lines and prices for H2H, spreads, and totals
     Historical lines and prices for H2H, spreads, and totals
     Historical game scores
     Combines #2 and #3 into a final dataframe
 
-Dataframes of Relevance
-
+### Dataframes of Relevance ###
     sportsbook_%
     historical_%
     final_%
 
-Average Vig Values at Pinnacle (%)
-
+### Average Vig Values at Pinnacle (%) ###
     H2H: 4.16%
     Spreads: 4.27%
     Totals: 4.58%
