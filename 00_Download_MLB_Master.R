@@ -22,7 +22,7 @@ packages <- c("baseballr", "dplyr", "data.table",  "httr2", "tidyverse", "lubrid
 lapply(packages, check_and_install)
 
 ## Paste your API key here
-api_key <- "e0d0cebccd1f3b630b762f64b521867d"
+api_key <- "YOUR API KEY"
 
 #------------------------------------------------------------------------------
 
