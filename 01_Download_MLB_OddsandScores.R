@@ -5,11 +5,10 @@
 # General comments
 ###############################################################################
 
-
 # Download today's games and lines and prices
 # API parameters
 regions <- c('us', 'eu')  # Focusing on US to align with your example
-books <- c('pinnacle', 'draftkings')  # Example bookmakers
+books <- c('pinnacle', 'draftkings')  # Change if needed
 sport <- "baseball_mlb"
 market_keys <- c("h2h", "spreads", "totals")  # Adding spreads and totals
 
@@ -391,7 +390,7 @@ if (nrow(final_game_scores_df) > 0) {
 
     # Create a histogram with a normal distribution curve and integer x-axis ticks
     ggplot(final_game_scores_df, aes(x = home_team_MOV)) +
-        geom_histogram(aes(y = ..density..), binwidth = 1, fill = "blue", color = "black") +
+        geom_histogram(aes(y = after_stat(density)), binwidth = 1, fill = "blue", color = "black") +
         stat_function(fun = dnorm, args = list(mean = mean_mov, sd = sd_mov), color = "red", linewidth = 1) +
         scale_x_continuous(breaks = seq(x_min, x_max, by = 1)) +
         theme_minimal() +
@@ -407,113 +406,7 @@ if (nrow(final_game_scores_df) > 0) {
     cat("No data to plot.\n")
 }
 
-# KDE kernel density estimation
-# Check if there are any values left to plot
-if (nrow(final_game_scores_df) > 0) {
-    # Calculate mean and standard deviation
-    mean_mov <- mean(final_game_scores_df$home_team_MOV)
-    sd_mov <- sd(final_game_scores_df$home_team_MOV)
 
-    # Create a KDE plot with a normal distribution curve
-    ggplot(final_game_scores_df, aes(x = home_team_MOV)) +
-        geom_density(fill = "blue", alpha = 0.5) +
-        stat_function(fun = dnorm, args = list(mean = mean_mov, sd = sd_mov), color = "red", linewidth = 1) +
-        theme_minimal() +
-        theme(
-            plot.title = element_text(hjust = 0.5, face = "bold"),
-            axis.title = element_text(face = "bold"),
-            axis.text = element_text(face = "bold")
-        ) +
-        labs(title = "Kernel Density Estimation of Home Team MOV with Normal Curve",
-             x = "Home Team Margin of Victory (MOV)",
-             y = "Density")
-} else {
-    cat("No data to plot.\n")
-}
-
-# Regresion plot of teams.home.leagueRecord.pct versus home_team_MOV
-# Check if there are any values left to plot
-if (nrow(final_game_scores_df) > 0) {
-    # Create a regression plot
-    ggplot(final_game_scores_df, aes(x = teams.home.leagueRecord.pct, y = home_team_MOV)) +
-        geom_point(color = "blue", alpha = 0.5) +
-        geom_smooth(method = "lm", color = "red", se = TRUE) +
-        theme_minimal() +
-        theme(
-            plot.title = element_text(hjust = 0.5, face = "bold"),
-            axis.title = element_text(face = "bold"),
-            axis.text = element_text(face = "bold")
-        ) +
-        labs(title = "Regression Plot of Home Team Win Percentage vs. MOV",
-             x = "Home Team League Record Percentage",
-             y = "Home Team Margin of Victory (MOV)")
-} else {
-    cat("No data to plot.\n")
-}
-
-# Check if there are any values left to plot
-if (nrow(final_game_scores_df) > 0) {
-    # Bivariate KDE plot
-    ggplot(final_game_scores_df, aes(x = teams.home.leagueRecord.pct, y = home_team_MOV)) +
-        geom_point(color = "blue", alpha = 0.5) +
-        geom_density_2d(color = "red") +
-        theme_minimal() +
-        theme(
-            plot.title = element_text(hjust = 0.5, face = "bold"),
-            axis.title = element_text(face = "bold"),
-            axis.text = element_text(face = "bold")
-        ) +
-        labs(title = "Bivariate Kernel Density Estimation Plot",
-             x = "Home Team League Record Percentage",
-             y = "Home Team Margin of Victory (MOV)")
-} else {
-    cat("No data to plot.\n")
-}
-
-
-# Check if there are any values left to plot
-if (nrow(final_game_scores_df) > 0) {
-    # Fit a linear model
-    lm_model <- lm(home_team_MOV ~ teams.home.leagueRecord.pct, data = final_game_scores_df)
-
-
-    # Residual plot
-    ggplot(final_game_scores_df, aes(x = teams.home.leagueRecord.pct, y = residuals)) +
-        geom_point(color = "blue", alpha = 0.5) +
-        geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
-        theme_minimal() +
-        theme(
-            plot.title = element_text(hjust = 0.5, face = "bold"),
-            axis.title = element_text(face = "bold"),
-            axis.text = element_text(face = "bold")
-        ) +
-        labs(title = "Residual Plot",
-             x = "Home Team League Record Percentage",
-             y = "Residuals")
-} else {
-    cat("No data to plot.\n")
-}
-
-
-
-# Check if there are any values left to plot
-if (nrow(final_game_scores_df) > 0) {
-    # Select relevant columns for pairplot
-    pairplot_data <- final_game_scores_df %>%
-        dplyr::select(home_team_MOV, teams.home.leagueRecord.pct, teams.away.leagueRecord.pct)
-
-    # Create pairplot
-    ggpairs(pairplot_data) +
-        theme_minimal() +
-        theme(
-            plot.title = element_text(hjust = 0.5, face = "bold"),
-            axis.title = element_text(face = "bold"),
-            axis.text = element_text(face = "bold")
-        ) +
-        labs(title = "Pairplot of Selected Variables")
-} else {
-    cat("No data to plot.\n")
-}
 
 ###############################################################################
 # Download MLB team data from baseballR functions, to use help run the command -> help("baseballR")
@@ -625,110 +518,153 @@ write.csv(final_combined_df, full_path, row.names = FALSE)
 cat("CSV file has been saved at", full_path, "\n")
 
 
-
-#### Dont need yet
-# Filter the data for h2h, spreads, totals
-final_combined_filtered_df <- final_combined_df %>%
-    dplyr::filter(market_key == "h2h") %>%  # Keep only 'h2h' market entries
+# Filter and process data for h2h
+final_combined_filtered_h2h <- final_combined_df %>%
+    dplyr::filter(market_key == "h2h") %>%
     dplyr::group_by(game_pk) %>%  # Group by game_pk
     dplyr::mutate(keep_row = dplyr::row_number(dplyr::desc(row_number())) <= 2) %>%  # Keep last 2 rows in each group
     dplyr::filter(keep_row) %>%  # Filter rows based on keep_row
     dplyr::select(-keep_row) %>%  # Remove the temporary keep_row column
     dplyr::ungroup()  # Ungroup the data
 
-# Filter the data for h2h, spreads, totals
-final_combined_filtered_df <- final_combined_df %>%
-    dplyr::filter(market_key == "totals") %>%  # Keep only 'h2h' market entries
+# Filter and process data for totals
+final_combined_filtered_totals <- final_combined_df %>%
+    dplyr::filter(market_key == "totals") %>%
     dplyr::group_by(game_pk) %>%  # Group by game_pk
     dplyr::mutate(keep_row = dplyr::row_number(dplyr::desc(row_number())) <= 2) %>%  # Keep last 2 rows in each group
     dplyr::filter(keep_row) %>%  # Filter rows based on keep_row
     dplyr::select(-keep_row) %>%  # Remove the temporary keep_row column
     dplyr::ungroup()  # Ungroup the data
 
-# Filter the data for h2h, spreads, totals
-final_combined_filtered_df <- final_combined_df %>%
-    dplyr::filter(market_key == "spreads") %>%  # Keep only 'h2h' market entries
+# Filter and process data for totals
+final_combined_filtered_spreads <- final_combined_df %>%
+    dplyr::filter(market_key == "spreads") %>%
     dplyr::group_by(game_pk) %>%  # Group by game_pk
     dplyr::mutate(keep_row = dplyr::row_number(dplyr::desc(row_number())) <= 2) %>%  # Keep last 2 rows in each group
     dplyr::filter(keep_row) %>%  # Filter rows based on keep_row
     dplyr::select(-keep_row) %>%  # Remove the temporary keep_row column
     dplyr::ungroup()  # Ungroup the data
-####
 
-# Print the result
-dplyr::glimpse(final_combined_filtered_df)
-
-
-# Combine into single row
-# Create team_type based on outcome_name and game home/away team names
-final_combined_filtered_df <- final_combined_filtered_df %>%
-    mutate(
-        team_type = case_when(
-            outcome_name == game_home_team ~ "home",
-            outcome_name == game_away_team ~ "away",
-            TRUE ~ NA_character_
+# Define a function to create the team_type column
+create_team_type <- function(df) {
+    df %>%
+        mutate(
+            team_type = case_when(
+                outcome_name == game_home_team ~ "home",
+                outcome_name == game_away_team ~ "away",
+                TRUE ~ NA_character_
+            )
         )
-    )
+    }
 
-# Check the result to ensure team_type is correctly identified
-dplyr::glimpse(final_combined_filtered_df)
+# Apply the function to each dataframe
+final_combined_filtered_h2h <- create_team_type(final_combined_filtered_h2h)
+final_combined_filtered_totals <- create_team_type(final_combined_filtered_totals)
+final_combined_filtered_spreads <- create_team_type(final_combined_filtered_spreads)
 
+# Function to pivot wider and combine rows into a single row for each game_pk
+pivot_wider_combined <- function(df, id_cols, names_from, values_from) {
+    df %>%
+        tidyr::pivot_wider(
+            id_cols = all_of(id_cols),
+            names_from = all_of(names_from),
+            values_from = all_of(values_from),
+            names_sep = "_"
+        )
+}
 
 # Pivot wider to combine rows into a single row for each game_pk for h2h
-final_combined_df_wide <- final_combined_filtered_df %>%
-    tidyr::pivot_wider(
-        id_cols = c(game_pk, game_commence_time, teams.home.score, teams.away.score,),
-        names_from = team_type,
-        values_from = c(outcome_name, decimal_outcome_1),
-        names_sep = "_"
-    )
+final_combined_df_wide_h2h <- pivot_wider_combined(
+    final_combined_filtered_h2h,
+    id_cols = c("game_pk", "game_commence_time", "teams.home.score", "teams.away.score"),
+    names_from = "team_type",
+    values_from = c("outcome_name", "decimal_outcome_1")
+)
 
-#### Dont need yet
+# Pivot wider to combine rows into a single row for each game_pk for spreads
+final_combined_df_wide_spreads <- pivot_wider_combined(
+    final_combined_filtered_spreads,
+    id_cols = c("game_pk", "game_commence_time", "teams.home.score", "teams.away.score", "teams.home.team.name", "teams.away.team.name"),
+    names_from = "team_type",
+    values_from = c("outcome_name", "outcome_price", "outcome_point", "decimal_outcome_1")
+)
+
+# Function to pivot wider and combine rows into a single row for each game_pk to handle lists
+pivot_wider_combined <- function(df, id_cols, names_from, values_from) {
+    df %>%
+        tidyr::pivot_wider(
+            id_cols = all_of(id_cols),
+            names_from = all_of(names_from),
+            values_from = all_of(values_from),
+            names_sep = "_",
+            values_fn = list  # Suppress the warning by explicitly stating that list-cols are expected
+        )
+}
+
 # Pivot wider to combine rows into a single row for each game_pk for totals
-final_combined_df_wide <- final_combined_filtered_df %>%
-    pivot_wider(
-        id_cols = c(game_pk, game_commence_time, teams.home.score, teams.away.score, teams.home.team.name, teams.away.team.name),
-        names_from = outcome_name,
-        values_from = c(outcome_price, outcome_point, decimal_outcome_1),
-        names_sep = "_"
-    )
-######
+final_combined_df_wide_totals <- pivot_wider_combined(
+    final_combined_filtered_totals,
+    id_cols = c("game_pk", "game_commence_time", "teams.home.score", "teams.away.score", "teams.home.team.name", "teams.away.team.name"),
+    names_from = "team_type",
+    values_from = c("outcome_name", "decimal_outcome_1", "outcome_point", "outcome_price")
+)
 
 
-# Select and reorder columns as needed
+# Combine the pivoted dataframes
+final_combined_df_wide <- bind_rows(final_combined_df_wide_h2h, final_combined_df_wide_spreads, final_combined_df_wide_totals)
+
+# Relabel specific columns and Convert game_commence_time for timezone
+final_combined_df_wide <- final_combined_df_wide %>%
+    mutate(gameDate = as.POSIXct(game_commence_time, tz = "UTC", format = "%Y-%m-%dT%H:%M:%SZ"),
+           gameDate = with_tz(gameDate, tzone = local_tz),
+           game_date = as.Date(gameDate),
+           game_time = format(gameDate, "%I:%M:%S %p")) %>%
+    rename(home_score = teams.home.score,
+           away_score = teams.away.score,
+           home_team_name = teams.home.team.name,
+           away_team_name = teams.away.team.name) %>%
+    arrange(desc(game_pk))
+
+
+# Print the result
+dplyr::glimpse(final_combined_df_wide)
+
+# Make final df
 final_df <- final_combined_df_wide %>%
-    dplyr::select(
-        game_pk, game_commence_time, outcome_name_away, teams.away.score, outcome_name_home, teams.home.score, decimal_outcome_1_home, decimal_outcome_1_away
-    )
+    select(game_pk, game_date, game_time, outcome_name_home, home_score, outcome_name_away, away_score, outcome_name_home,
+           outcome_name_away, decimal_outcome_1_home, decimal_outcome_1_away, home_team_name, away_team_name, outcome_price_home,
+           outcome_price_away, outcome_point_home, outcome_point_away, outcome_name_NA, decimal_outcome_1_NA, outcome_point_NA, outcome_price_NA
+)
+
+# Print the result
+dplyr::glimpse(final_df)
 
 # Write the dataframe to a CSV file
 filename <- paste0("final_game_scores_&odds_h2h", today_date, ".csv")  # Create filename with today's date
 full_path <- file.path(folder_path, filename)  # Combine folder path and filename
-write.csv(final_df, full_path, row.names = FALSE)
+write.csv(final_combined_df_wide_h2h, full_path, row.names = FALSE)
 
 # Print a message to confirm
 cat("CSV file has been saved at", full_path, "\n")
 
-
-
-
+# Calculate average home and away point differentials for each team at home and away
 # Create data frames for home and away games
 home_games <- final_combined_df_wide %>%
-    select(game_pk, game_commence_time, outcome_name_home, teams.home.score, teams.away.score) %>%
+    select(game_pk, game_commence_time, outcome_name_home, home_score, away_score) %>%
     rename(
         Team = outcome_name_home,
-        PFH = teams.home.score,
-        PAH = teams.away.score,
+        PFH = home_score,
+        PAH = away_score,
         CommenceTime = game_commence_time
     ) %>%
     mutate(PFA = 0, PAA = 0)
 
 away_games <- final_combined_df_wide %>%
-    select(game_pk, game_commence_time, outcome_name_away, teams.away.score, teams.home.score) %>%
+    select(game_pk, game_commence_time, outcome_name_away, away_score, home_score) %>%
     rename(
         Team = outcome_name_away,
-        PFA = teams.away.score,
-        PAA = teams.home.score,
+        PFA = away_score,
+        PAA = home_score,
         CommenceTime = game_commence_time
     ) %>%
     mutate(PFH = 0, PAH = 0)
@@ -750,28 +686,3 @@ team_summary_stats <- combined_games %>%
 print(team_summary_stats)
 
 
-
-
-
-# For totals
-
-# Convert game_commence_time to Date-Time format
-final_combined_df_wide$game_commence_time <- as.POSIXct(final_combined_df_wide$game_commence_time, format="%Y-%m-%d %H:%M:%S")
-
-# Define the filter date
-filter_date <- as.POSIXct("2024-05-06 23:59:59", format="%Y-%m-%d %H:%M:%S")
-
-# Filter the dataframe
-final_combined_df_wide <- final_combined_df_wide %>% filter(game_commence_time <= filter_date)
-
-# Write the dataframe to a CSV file
-filename <- paste0("final_game_scores_&odds_totals", today_date, ".csv")  # Create filename with today's date
-full_path <- file.path(folder_path, filename)  # Combine folder path and filename
-write.csv(final_combined_df_wide, full_path, row.names = FALSE)
-
-# Print a message to confirm
-cat("CSV file has been saved at", full_path, "\n")
-
-
-# Display the filtered dataframe
-print(combined_games)
