@@ -1,3 +1,9 @@
+### Baseballr
+<img src='https://github.com/andyman14/Andys-MLB-Download/blob/main/images/baseballr.png' width="50%" min-width="200px" />
+
+### The Odds API
+<img src='https://github.com/andyman14/Andys-MLB-Download/blob/main/images/the-odds-api.png' width="50%" min-width="200px" />
+
 ---
 title: "Andys MLB Download"
 author: "Andy Ouellette"
