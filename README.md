@@ -7,7 +7,7 @@ date: "6/25/2024"
 
 | <img src='https://github.com/andyman14/Andys-MLB-Download/blob/main/images/baseballr.png' width="150"/> | <img src='https://github.com/andyman14/Andys-MLB-Download/blob/main/images/the-odds-api.png' width="150"/> |
 |:---:|:---:|
-| [**baseballR**](https://the-odds-api.com/) | [**The Odds API**](https://github.com/BillPetti/baseballr/tree/master)
+| [**baseballR**](https://github.com/BillPetti/baseballr/tree/master) | [**The Odds API**](https://the-odds-api.com/)
 
 ## *READ ME*
 
