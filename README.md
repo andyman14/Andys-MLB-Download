@@ -47,7 +47,7 @@ Select all lines of code in 00_Download_MLB_Master.R and execute them after upda
 ```{r packages}
 # List of packages to check and install if necessary
 packages <- c("baseballr", "dplyr", "data.table",  "httr2", "tidyverse", "lubridate",
-              "jsonlite", "ggplot2", "GGally", "purrr", "tibble")
+              "jsonlite", "ggplot2", "GGally", "purrr")
 
 ```
 
