@@ -16,7 +16,7 @@ check_and_install <- function(package){
 
 # List of packages to check and install if necessary
 packages <- c("baseballr", "dplyr", "data.table",  "httr2", "tidyverse", "lubridate",
-              "jsonlite", "ggplot2", "GGally", "purrr", "tibble")
+              "jsonlite", "ggplot2", "GGally", "purrr")
 
 # Apply the function to each package
 lapply(packages, check_and_install)
